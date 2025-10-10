@@ -1,0 +1,357 @@
+diff -u -r -N original_branch/Makefile my_lab/Makefile
+--- original_branch/Makefile	2024-09-11 04:48:31.000000000 +0800
++++ my_lab/Makefile	2025-10-10 19:31:25.984685331 +0800
+@@ -194,9 +194,11 @@
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
+-
+-
+-
++	$U/_sleep\
++	$U/_pingpong\
++	$U/_primes\
++	$U/_find\
++	$U/_xargs
+ 
+ ifeq ($(LAB),syscall)
+ UPROGS += \
+diff -u -r -N original_branch/user/find.c my_lab/user/find.c
+--- original_branch/user/find.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/find.c	2025-10-10 19:31:25.988685330 +0800
+@@ -0,0 +1,95 @@
++#include "kernel/types.h"
++
++#include "kernel/fcntl.h"
++#include "kernel/fs.h"
++#include "kernel/stat.h"
++
++#include "user/user.h"
++char buf[512];
++
++void __find(int idx, // "./abc/{fd's dirname}/{filename}". idx will point to end
++                     // of "{fd's dirname}/"
++            int fd, char *filename) {
++  struct dirent de;
++
++  while (read(fd, &de, sizeof(de)) == sizeof(de)) {
++    if (de.inum == 0) {
++      break;
++    }
++    if (strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0) {
++      continue;
++    }
++    // printf("__find: (buf=%s, idx=%d) %s\n", buf, idx, de.name);
++    // concat de.name to buf and open it
++    strcpy(buf + idx, de.name);
++    buf[idx + strlen(de.name)] = '/';
++    buf[idx + strlen(de.name) + 1] = '\0';
++    int fd2;
++    if ((fd2 = open(buf, O_RDONLY)) < 0) {
++      fprintf(2, "__find: cannot open %s\n", buf);
++      close(fd2);
++      exit(1);
++    }
++    struct stat st;
++    if (fstat(fd2, &st) < 0) {
++      fprintf(2, "__find: cannot stat %s\n", buf);
++      close(fd2);
++      exit(1);
++    }
++    if (st.type == T_DIR) {
++      // printf("__find: %s is a directory\n", buf);
++      __find(idx + strlen(de.name) + 1, fd2, filename);
++    } else if (st.type == T_FILE) {
++      // printf("__find: %s is a file\n", buf);
++      if (strcmp(de.name, filename) == 0) {
++        printf("%s\n", buf);
++      }
++    }
++    close(fd2);
++  }
++}
++
++void find(char *directory, char *filename) {
++  // printf("find: %s %s\n", directory, filename);
++  int fd;
++  struct stat st;
++
++  if ((fd = open(directory, O_RDONLY)) < 0) {
++    fprintf(2, "find: cannot open %s\n", directory);
++    return;
++  }
++
++  if (fstat(fd, &st) < 0) {
++    fprintf(2, "find: cannot stat %s\n", directory);
++    close(fd);
++    return;
++  }
++
++  // if the path opended is not a directory, return
++  if (st.type != T_DIR) {
++    fprintf(2, "find: %s is not a directory\n", directory);
++    close(fd);
++    return;
++  }
++
++  // if the path opended is a directory, recursively find the filename under the
++  // dir
++
++  // first we copy the name of the directory to buf
++  strcpy(buf, directory);
++  buf[strlen(directory)] = '/';
++  buf[strlen(directory) + 1] = '\0';
++
++  __find(strlen(directory) + 1, fd, filename);
++
++  close(fd);
++}
++
++int main(int argc, char *argv[]) {
++  if (argc != 3) {
++    fprintf(2, "Usage: find <directory> <filename>\n");
++    exit(1);
++  }
++  find(argv[1], argv[2]);
++  exit(0);
++}
+\ No newline at end of file
+diff -u -r -N original_branch/user/pingpong.c my_lab/user/pingpong.c
+--- original_branch/user/pingpong.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/pingpong.c	2025-10-10 19:31:25.988685330 +0800
+@@ -0,0 +1,42 @@
++#include "kernel/types.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[]) {
++  int p1[2], p2[2]; // two pipes: one for each direction
++  int pid;
++  char buf;
++
++  pipe(p1); // parent -> child
++  pipe(p2); // child -> parent
++
++  pid = fork();
++
++  if (pid == 0) {
++    // Child process
++    close(p1[1]); // close write end of parent->child pipe
++    close(p2[0]); // close read end of child->parent pipe
++
++    read(p1[0], &buf, 1);
++    printf("%d: received ping\n", getpid());
++
++    write(p2[1], &buf, 1);
++
++    close(p1[0]);
++    close(p2[1]);
++    exit(0);
++  } else {
++    // Parent process
++    close(p1[0]); // close read end of parent->child pipe
++    close(p2[1]); // close write end of child->parent pipe
++
++    buf = 'x'; // any byte will do
++    write(p1[1], &buf, 1);
++
++    read(p2[0], &buf, 1);
++    printf("%d: received pong\n", getpid());
++
++    close(p1[1]);
++    close(p2[0]);
++    exit(0);
++  }
++}
+\ No newline at end of file
+diff -u -r -N original_branch/user/primes.c my_lab/user/primes.c
+--- original_branch/user/primes.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/primes.c	2025-10-10 19:31:25.988685330 +0800
+@@ -0,0 +1,67 @@
++#include "kernel/types.h"
++#include "user/user.h"
++
++void primes(int parent_pipe_read_fd) __attribute__((noreturn));
++void primes(int parent_pipe_read_fd) {
++  int base;
++  int bytes_read = read(parent_pipe_read_fd, &base, sizeof(base));
++  if (bytes_read != sizeof(base)) {
++    close(parent_pipe_read_fd);
++    exit(0);
++  }
++  printf("prime %d\n", base);
++
++  int p[2];
++  pipe(p);
++
++  int pid = fork();
++  if (pid == 0) {
++    // child process
++    close(p[1]);
++    close(parent_pipe_read_fd);
++    primes(p[0]);
++  } else {
++    // parent process
++    close(p[0]);
++
++    int n;
++    while ((bytes_read = read(parent_pipe_read_fd, &n, sizeof(n))) ==
++           sizeof(n)) {
++      if (n % base != 0) {
++        write(p[1], &n, sizeof(n));
++      }
++    }
++
++    close(p[1]);
++    close(parent_pipe_read_fd);
++
++    int ret;
++    wait(&ret);
++    exit(0);
++  }
++}
++
++int main(int argc, char *argv[]) {
++  int main_pipe[2];
++  pipe(main_pipe);
++
++  int pid = fork();
++  if (pid == 0) {
++    // child process - start the pipeline
++    close(main_pipe[1]);
++    primes(main_pipe[0]); // main process feeds 2-280 to the worker process
++                          // through pipe
++  } else {
++    // parent process - feed numbers to pipeline
++    close(main_pipe[0]);
++
++    for (int i = 2; i <= 280; i++) {
++      write(main_pipe[1], &i, sizeof(i));
++    }
++    close(main_pipe[1]);
++
++    int ret;
++    wait(&ret);
++    exit(0);
++  }
++}
+\ No newline at end of file
+diff -u -r -N original_branch/user/sleep.c my_lab/user/sleep.c
+--- original_branch/user/sleep.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/sleep.c	2025-10-10 19:31:25.988685330 +0800
+@@ -0,0 +1,13 @@
++#include "kernel/types.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[]) {
++  int seconds;
++  if (argc != 2) {
++    fprintf(2, "Usage: sleep <seconds>\n");
++    exit(1);
++  }
++  seconds = atoi(argv[1]);
++  sleep(seconds);
++  exit(0);
++}
+\ No newline at end of file
+diff -u -r -N original_branch/user/xargs.c my_lab/user/xargs.c
+--- original_branch/user/xargs.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/xargs.c	2025-10-10 19:31:25.988685330 +0800
+@@ -0,0 +1,97 @@
++#include "kernel/types.h"
++
++#include "kernel/stat.h"
++#include "user/user.h"
++
++void xargs(int argc, char *argv[]) {
++  char line[100];
++  char *n_argv[100];
++
++  for (int i = 0; i < 100; i++) {
++    n_argv[i] = 0;
++  }
++
++  for (int i = 1; i < argc; i++) {
++    n_argv[i - 1] = argv[i];
++  }
++
++  int base_argc = argc - 1;
++
++  while (1) {
++    // Read one line at a time
++    int i = 0;
++    char c;
++    while (read(0, &c, 1) > 0 && c != '\n' && i < sizeof(line) - 1) {
++      line[i++] = c;
++    }
++    line[i] = '\0';
++
++    // If we didn't read anything, we're done
++    if (i == 0 && read(0, &c, 1) <= 0) {
++      break;
++    }
++
++    // Process the line
++    char *p = line;
++    while (*p != '\0') {
++      while (*p == ' ' || *p == '\t') {
++        p++;
++      }
++      if (*p == '\0')
++        break;
++
++      char *word_start = p;
++      while (*p != ' ' && *p != '\t' && *p != '\0') {
++        p++;
++      }
++
++      int word_len = p - word_start;
++      char *word = malloc(word_len + 1);
++      if (word == 0) {
++        fprintf(2, "xargs: malloc failed\n");
++        exit(1);
++      }
++
++      for (int j = 0; j < word_len; j++) {
++        word[j] = word_start[j];
++      }
++      word[word_len] = '\0';
++
++      n_argv[base_argc] = word;
++      base_argc++;
++
++      while (*p == ' ' || *p == '\t') {
++        p++;
++      }
++    }
++
++    n_argv[base_argc] = 0;
++
++    int pid = fork();
++    if (pid < 0) {
++      fprintf(2, "xargs: fork failed\n");
++      exit(1);
++    } else if (pid == 0) {
++      if (exec(argv[1], n_argv) < 0) {
++        fprintf(2, "xargs: exec failed\n");
++        exit(1);
++      }
++    } else {
++      int status;
++      wait(&status);
++    }
++
++    base_argc = argc - 1;
++    for (int i = base_argc; i < 100; i++) {
++      if (n_argv[i] != 0) {
++        free(n_argv[i]);
++        n_argv[i] = 0;
++      }
++    }
++  }
++}
++
++int main(int argc, char *argv[]) {
++  xargs(argc, argv);
++  return 0;
++}
+\ No newline at end of file
