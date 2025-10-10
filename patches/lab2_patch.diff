@@ -1,0 +1,572 @@
+diff -u -r -N original_branch/answers-syscall.txt my_lab/answers-syscall.txt
+--- original_branch/answers-syscall.txt	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/answers-syscall.txt	2025-10-10 20:12:37.864627299 +0800
+@@ -0,0 +1,8 @@
++1
++2
++3
++4
++5
++6
++7
++:D
+\ No newline at end of file
+diff -u -r -N original_branch/kernel/proc.c my_lab/kernel/proc.c
+--- original_branch/kernel/proc.c	2024-09-09 19:27:30.000000000 +0800
++++ my_lab/kernel/proc.c	2025-10-10 20:12:37.852627300 +0800
+@@ -302,6 +302,8 @@
+   // Cause fork to return 0 in the child.
+   np->trapframe->a0 = 0;
+ 
++  np->trace_mask = p->trace_mask; // inherit the trace mask from the parent - wheatfox
++
+   // increment reference counts on open file descriptors.
+   for(i = 0; i < NOFILE; i++)
+     if(p->ofile[i])
+@@ -671,12 +673,12 @@
+ procdump(void)
+ {
+   static char *states[] = {
+-  [UNUSED]    "unused",
+-  [USED]      "used",
+-  [SLEEPING]  "sleep ",
+-  [RUNNABLE]  "runble",
+-  [RUNNING]   "run   ",
+-  [ZOMBIE]    "zombie"
++  [UNUSED]    = "unused",
++  [USED]      = "used",
++  [SLEEPING]  = "sleep ",
++  [RUNNABLE]  = "runble",
++  [RUNNING]   = "run   ",
++  [ZOMBIE]    = "zombie"
+   };
+   struct proc *p;
+   char *state;
+diff -u -r -N original_branch/kernel/proc.h my_lab/kernel/proc.h
+--- original_branch/kernel/proc.h	2024-09-09 19:27:30.000000000 +0800
++++ my_lab/kernel/proc.h	2025-10-10 20:12:37.852627300 +0800
+@@ -1,3 +1,6 @@
++#include "kernel/types.h"
++#include "kernel/param.h"
++
+ // Saved registers for kernel context switches.
+ struct context {
+   uint64 ra;
+@@ -104,4 +107,6 @@
+   struct file *ofile[NOFILE];  // Open files
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
++
++  int trace_mask;              // Trace mask for the process
+ };
+diff -u -r -N original_branch/kernel/syscall.c my_lab/kernel/syscall.c
+--- original_branch/kernel/syscall.c	2024-09-09 19:27:30.000000000 +0800
++++ my_lab/kernel/syscall.c	2025-10-10 20:12:37.852627300 +0800
+@@ -101,33 +101,64 @@
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_trace(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+ static uint64 (*syscalls[])(void) = {
+-[SYS_fork]    sys_fork,
+-[SYS_exit]    sys_exit,
+-[SYS_wait]    sys_wait,
+-[SYS_pipe]    sys_pipe,
+-[SYS_read]    sys_read,
+-[SYS_kill]    sys_kill,
+-[SYS_exec]    sys_exec,
+-[SYS_fstat]   sys_fstat,
+-[SYS_chdir]   sys_chdir,
+-[SYS_dup]     sys_dup,
+-[SYS_getpid]  sys_getpid,
+-[SYS_sbrk]    sys_sbrk,
+-[SYS_sleep]   sys_sleep,
+-[SYS_uptime]  sys_uptime,
+-[SYS_open]    sys_open,
+-[SYS_write]   sys_write,
+-[SYS_mknod]   sys_mknod,
+-[SYS_unlink]  sys_unlink,
+-[SYS_link]    sys_link,
+-[SYS_mkdir]   sys_mkdir,
+-[SYS_close]   sys_close,
++[SYS_fork]    = sys_fork,
++[SYS_exit]    = sys_exit,
++[SYS_wait]    = sys_wait,
++[SYS_pipe]    = sys_pipe,
++[SYS_read]    = sys_read,
++[SYS_kill]    = sys_kill,
++[SYS_exec]    = sys_exec,
++[SYS_fstat]   = sys_fstat,
++[SYS_chdir]   = sys_chdir,
++[SYS_dup]     = sys_dup,
++[SYS_getpid]  = sys_getpid,
++[SYS_sbrk]    = sys_sbrk,
++[SYS_sleep]   = sys_sleep,
++[SYS_uptime]  = sys_uptime,
++[SYS_open]    = sys_open,
++[SYS_write]   = sys_write,
++[SYS_mknod]   = sys_mknod,
++[SYS_unlink]  = sys_unlink,
++[SYS_link]    = sys_link,
++[SYS_mkdir]   = sys_mkdir,
++[SYS_close]   = sys_close,
++[SYS_trace]   = sys_trace,
+ };
+ 
++static const char* syscall_names[] = {
++  [SYS_fork]    = "fork",
++  [SYS_exit]    = "exit", 
++  [SYS_wait]    = "wait",
++  [SYS_pipe]    = "pipe",
++  [SYS_read]    = "read",
++  [SYS_kill]    = "kill",
++  [SYS_exec]    = "exec",
++  [SYS_fstat]   = "fstat",
++  [SYS_chdir]   = "chdir",
++  [SYS_dup]     = "dup",
++  [SYS_getpid]  = "getpid",
++  [SYS_sbrk]    = "sbrk",
++  [SYS_sleep]   = "sleep",
++  [SYS_uptime]  = "uptime",
++  [SYS_open]    = "open",
++  [SYS_write]   = "write",
++  [SYS_mknod]   = "mknod",
++  [SYS_unlink]  = "unlink",
++  [SYS_link]    = "link",
++  [SYS_mkdir]   = "mkdir",
++  [SYS_close]   = "close",
++  [SYS_trace]   = "trace",
++};
++
++#define syscallname(num) \
++  ((num) >= 0 && (num) < NELEM(syscall_names) && syscall_names[(num)] ? \
++   syscall_names[(num)] : "unknown")
++
+ void
+ syscall(void)
+ {
+@@ -139,6 +170,12 @@
+     // Use num to lookup the system call function for num, call it,
+     // and store its return value in p->trapframe->a0
+     p->trapframe->a0 = syscalls[num]();
++
++    // if the trace mask is set, print the system call
++    if (p->trace_mask & (1 << num)) {
++      printf("%d: syscall %s -> %lu\n", p->pid, syscallname(num), p->trapframe->a0);
++    }
++
+   } else {
+     printf("%d %s: unknown sys call %d\n",
+             p->pid, p->name, num);
+diff -u -r -N original_branch/kernel/syscall.h my_lab/kernel/syscall.h
+--- original_branch/kernel/syscall.h	2024-09-09 19:27:30.000000000 +0800
++++ my_lab/kernel/syscall.h	2025-10-10 20:12:37.852627300 +0800
+@@ -20,3 +20,4 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_trace  22
+diff -u -r -N original_branch/kernel/sysproc.c my_lab/kernel/sysproc.c
+--- original_branch/kernel/sysproc.c	2024-09-09 19:27:30.000000000 +0800
++++ my_lab/kernel/sysproc.c	2025-10-10 20:12:37.852627300 +0800
+@@ -91,3 +91,13 @@
+   release(&tickslock);
+   return xticks;
+ }
++
++// the tracing syscall :)
++uint64
++sys_trace(void)
++{
++  int mask;
++  argint(0, &mask);
++  myproc()->trace_mask = mask;
++  return 0;
++}
+\ No newline at end of file
+diff -u -r -N original_branch/Makefile my_lab/Makefile
+--- original_branch/Makefile	2024-09-09 19:27:30.000000000 +0800
++++ my_lab/Makefile	2025-10-10 20:12:37.864627299 +0800
+@@ -194,9 +194,12 @@
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
+-
+-
+-
++	$U/_sleep\
++	$U/_pingpong\
++	$U/_primes\
++	$U/_find\
++	$U/_xargs\
++	$U/_trace
+ 
+ ifeq ($(LAB),syscall)
+ UPROGS += \
+diff -u -r -N original_branch/user/find.c my_lab/user/find.c
+--- original_branch/user/find.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/find.c	2025-10-10 20:12:37.856627300 +0800
+@@ -0,0 +1,95 @@
++#include "kernel/types.h"
++
++#include "kernel/fcntl.h"
++#include "kernel/fs.h"
++#include "kernel/stat.h"
++
++#include "user/user.h"
++char buf[512];
++
++void __find(int idx, // "./abc/{fd's dirname}/{filename}". idx will point to end
++                     // of "{fd's dirname}/"
++            int fd, char *filename) {
++  struct dirent de;
++
++  while (read(fd, &de, sizeof(de)) == sizeof(de)) {
++    if (de.inum == 0) {
++      break;
++    }
++    if (strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0) {
++      continue;
++    }
++    // printf("__find: (buf=%s, idx=%d) %s\n", buf, idx, de.name);
++    // concat de.name to buf and open it
++    strcpy(buf + idx, de.name);
++    buf[idx + strlen(de.name)] = '/';
++    buf[idx + strlen(de.name) + 1] = '\0';
++    int fd2;
++    if ((fd2 = open(buf, O_RDONLY)) < 0) {
++      fprintf(2, "__find: cannot open %s\n", buf);
++      close(fd2);
++      exit(1);
++    }
++    struct stat st;
++    if (fstat(fd2, &st) < 0) {
++      fprintf(2, "__find: cannot stat %s\n", buf);
++      close(fd2);
++      exit(1);
++    }
++    if (st.type == T_DIR) {
++      // printf("__find: %s is a directory\n", buf);
++      __find(idx + strlen(de.name) + 1, fd2, filename);
++    } else if (st.type == T_FILE) {
++      // printf("__find: %s is a file\n", buf);
++      if (strcmp(de.name, filename) == 0) {
++        printf("%s\n", buf);
++      }
++    }
++    close(fd2);
++  }
++}
++
++void find(char *directory, char *filename) {
++  // printf("find: %s %s\n", directory, filename);
++  int fd;
++  struct stat st;
++
++  if ((fd = open(directory, O_RDONLY)) < 0) {
++    fprintf(2, "find: cannot open %s\n", directory);
++    return;
++  }
++
++  if (fstat(fd, &st) < 0) {
++    fprintf(2, "find: cannot stat %s\n", directory);
++    close(fd);
++    return;
++  }
++
++  // if the path opended is not a directory, return
++  if (st.type != T_DIR) {
++    fprintf(2, "find: %s is not a directory\n", directory);
++    close(fd);
++    return;
++  }
++
++  // if the path opended is a directory, recursively find the filename under the
++  // dir
++
++  // first we copy the name of the directory to buf
++  strcpy(buf, directory);
++  buf[strlen(directory)] = '/';
++  buf[strlen(directory) + 1] = '\0';
++
++  __find(strlen(directory) + 1, fd, filename);
++
++  close(fd);
++}
++
++int main(int argc, char *argv[]) {
++  if (argc != 3) {
++    fprintf(2, "Usage: find <directory> <filename>\n");
++    exit(1);
++  }
++  find(argv[1], argv[2]);
++  exit(0);
++}
+\ No newline at end of file
+diff -u -r -N original_branch/user/pingpong.c my_lab/user/pingpong.c
+--- original_branch/user/pingpong.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/pingpong.c	2025-10-10 20:12:37.860627300 +0800
+@@ -0,0 +1,42 @@
++#include "kernel/types.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[]) {
++  int p1[2], p2[2]; // two pipes: one for each direction
++  int pid;
++  char buf;
++
++  pipe(p1); // parent -> child
++  pipe(p2); // child -> parent
++
++  pid = fork();
++
++  if (pid == 0) {
++    // Child process
++    close(p1[1]); // close write end of parent->child pipe
++    close(p2[0]); // close read end of child->parent pipe
++
++    read(p1[0], &buf, 1);
++    printf("%d: received ping\n", getpid());
++
++    write(p2[1], &buf, 1);
++
++    close(p1[0]);
++    close(p2[1]);
++    exit(0);
++  } else {
++    // Parent process
++    close(p1[0]); // close read end of parent->child pipe
++    close(p2[1]); // close write end of child->parent pipe
++
++    buf = 'x'; // any byte will do
++    write(p1[1], &buf, 1);
++
++    read(p2[0], &buf, 1);
++    printf("%d: received pong\n", getpid());
++
++    close(p1[1]);
++    close(p2[0]);
++    exit(0);
++  }
++}
+\ No newline at end of file
+diff -u -r -N original_branch/user/primes.c my_lab/user/primes.c
+--- original_branch/user/primes.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/primes.c	2025-10-10 20:12:37.860627300 +0800
+@@ -0,0 +1,67 @@
++#include "kernel/types.h"
++#include "user/user.h"
++
++void primes(int parent_pipe_read_fd) __attribute__((noreturn));
++void primes(int parent_pipe_read_fd) {
++  int base;
++  int bytes_read = read(parent_pipe_read_fd, &base, sizeof(base));
++  if (bytes_read != sizeof(base)) {
++    close(parent_pipe_read_fd);
++    exit(0);
++  }
++  printf("prime %d\n", base);
++
++  int p[2];
++  pipe(p);
++
++  int pid = fork();
++  if (pid == 0) {
++    // child process
++    close(p[1]);
++    close(parent_pipe_read_fd);
++    primes(p[0]);
++  } else {
++    // parent process
++    close(p[0]);
++
++    int n;
++    while ((bytes_read = read(parent_pipe_read_fd, &n, sizeof(n))) ==
++           sizeof(n)) {
++      if (n % base != 0) {
++        write(p[1], &n, sizeof(n));
++      }
++    }
++
++    close(p[1]);
++    close(parent_pipe_read_fd);
++
++    int ret;
++    wait(&ret);
++    exit(0);
++  }
++}
++
++int main(int argc, char *argv[]) {
++  int main_pipe[2];
++  pipe(main_pipe);
++
++  int pid = fork();
++  if (pid == 0) {
++    // child process - start the pipeline
++    close(main_pipe[1]);
++    primes(main_pipe[0]); // main process feeds 2-280 to the worker process
++                          // through pipe
++  } else {
++    // parent process - feed numbers to pipeline
++    close(main_pipe[0]);
++
++    for (int i = 2; i <= 280; i++) {
++      write(main_pipe[1], &i, sizeof(i));
++    }
++    close(main_pipe[1]);
++
++    int ret;
++    wait(&ret);
++    exit(0);
++  }
++}
+\ No newline at end of file
+diff -u -r -N original_branch/user/sleep.c my_lab/user/sleep.c
+--- original_branch/user/sleep.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/sleep.c	2025-10-10 20:12:37.860627300 +0800
+@@ -0,0 +1,13 @@
++#include "kernel/types.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[]) {
++  int seconds;
++  if (argc != 2) {
++    fprintf(2, "Usage: sleep <seconds>\n");
++    exit(1);
++  }
++  seconds = atoi(argv[1]);
++  sleep(seconds);
++  exit(0);
++}
+\ No newline at end of file
+diff -u -r -N original_branch/user/user.h my_lab/user/user.h
+--- original_branch/user/user.h	2024-09-09 19:27:30.000000000 +0800
++++ my_lab/user/user.h	2025-10-10 20:12:37.856627300 +0800
+@@ -1,3 +1,5 @@
++#include "kernel/types.h"
++
+ struct stat;
+ 
+ // system calls
+@@ -22,6 +24,7 @@
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int trace(int);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff -u -r -N original_branch/user/usys.pl my_lab/user/usys.pl
+--- original_branch/user/usys.pl	2024-09-09 19:27:30.000000000 +0800
++++ my_lab/user/usys.pl	2025-10-10 20:12:37.856627300 +0800
+@@ -36,3 +36,4 @@
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("trace");
+diff -u -r -N original_branch/user/xargs.c my_lab/user/xargs.c
+--- original_branch/user/xargs.c	1970-01-01 08:00:00.000000000 +0800
++++ my_lab/user/xargs.c	2025-10-10 20:12:37.860627300 +0800
+@@ -0,0 +1,97 @@
++#include "kernel/types.h"
++
++#include "kernel/stat.h"
++#include "user/user.h"
++
++void xargs(int argc, char *argv[]) {
++  char line[100];
++  char *n_argv[100];
++
++  for (int i = 0; i < 100; i++) {
++    n_argv[i] = 0;
++  }
++
++  for (int i = 1; i < argc; i++) {
++    n_argv[i - 1] = argv[i];
++  }
++
++  int base_argc = argc - 1;
++
++  while (1) {
++    // Read one line at a time
++    int i = 0;
++    char c;
++    while (read(0, &c, 1) > 0 && c != '\n' && i < sizeof(line) - 1) {
++      line[i++] = c;
++    }
++    line[i] = '\0';
++
++    // If we didn't read anything, we're done
++    if (i == 0 && read(0, &c, 1) <= 0) {
++      break;
++    }
++
++    // Process the line
++    char *p = line;
++    while (*p != '\0') {
++      while (*p == ' ' || *p == '\t') {
++        p++;
++      }
++      if (*p == '\0')
++        break;
++
++      char *word_start = p;
++      while (*p != ' ' && *p != '\t' && *p != '\0') {
++        p++;
++      }
++
++      int word_len = p - word_start;
++      char *word = malloc(word_len + 1);
++      if (word == 0) {
++        fprintf(2, "xargs: malloc failed\n");
++        exit(1);
++      }
++
++      for (int j = 0; j < word_len; j++) {
++        word[j] = word_start[j];
++      }
++      word[word_len] = '\0';
++
++      n_argv[base_argc] = word;
++      base_argc++;
++
++      while (*p == ' ' || *p == '\t') {
++        p++;
++      }
++    }
++
++    n_argv[base_argc] = 0;
++
++    int pid = fork();
++    if (pid < 0) {
++      fprintf(2, "xargs: fork failed\n");
++      exit(1);
++    } else if (pid == 0) {
++      if (exec(argv[1], n_argv) < 0) {
++        fprintf(2, "xargs: exec failed\n");
++        exit(1);
++      }
++    } else {
++      int status;
++      wait(&status);
++    }
++
++    base_argc = argc - 1;
++    for (int i = base_argc; i < 100; i++) {
++      if (n_argv[i] != 0) {
++        free(n_argv[i]);
++        n_argv[i] = 0;
++      }
++    }
++  }
++}
++
++int main(int argc, char *argv[]) {
++  xargs(argc, argv);
++  return 0;
++}
+\ No newline at end of file

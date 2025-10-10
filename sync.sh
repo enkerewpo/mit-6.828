@@ -116,11 +116,11 @@ export_patch() {
     
     cp -r "$MIT_LABS/$folder" "$temp_dir/my_lab"
     
-    find "$temp_dir/original_branch" -name "*.o" -o -name "*.d" -o -name "*.asm" -o -name "*.sym" -o -name "*.img" -o -name "_*" -o -name "*.out" -o -wholename "*/kernel/kernel" -o -wholename "*/mkfs/mkfs" -o -name "__pycache__" -o -name ".cache" -o -name "usys.S" -o -name "compile_commands.json" -o -name ".gdbinit" -o -name "initcode" -o -name "time.txt" | while read file; do
+    find "$temp_dir/original_branch" -name "*.o" -o -name "*.d" -o -name "*.asm" -o -name "*.sym" -o -name "*.img" -o -name "_*" -o -name "*.out*" -o -wholename "*/kernel/kernel" -o -wholename "*/mkfs/mkfs" -o -name "__pycache__" -o -name ".cache" -o -name "usys.S" -o -name "compile_commands.json" -o -name ".gdbinit" -o -name "initcode" -o -name "time.txt" | while read file; do
         rm -rf "$file"
     done
     
-    find "$temp_dir/my_lab" -name "*.o" -o -name "*.d" -o -name "*.asm" -o -name "*.sym" -o -name "*.img" -o -name "_*" -o -name "*.out" -o -wholename "*/kernel/kernel" -o -wholename "*/mkfs/mkfs" -o -name "__pycache__" -o -name ".cache" -o -name "usys.S" -o -name "compile_commands.json" -o -name ".gdbinit" -o -name "initcode" -o -name "time.txt" | while read file; do
+    find "$temp_dir/my_lab" -name "*.o" -o -name "*.d" -o -name "*.asm" -o -name "*.sym" -o -name "*.img" -o -name "_*" -o -name "*.out*" -o -wholename "*/kernel/kernel" -o -wholename "*/mkfs/mkfs" -o -name "__pycache__" -o -name ".cache" -o -name "usys.S" -o -name "compile_commands.json" -o -name ".gdbinit" -o -name "initcode" -o -name "time.txt" | while read file; do
         rm -rf "$file"
     done
     
