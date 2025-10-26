@@ -173,7 +173,7 @@ syscall(void)
 
     // if the trace mask is set, print the system call
     if (p->trace_mask & (1 << num)) {
-      printf("%d: syscall %s -> %lu\n", p->pid, syscallname(num), p->trapframe->a0);
+      printf("%d: syscall %s -> %ld\n", p->pid, syscallname(num), (long)p->trapframe->a0);
     }
 
   } else {
