@@ -1,6 +1,18 @@
+diff -u -r -N original_branch/gradelib.py my_lab/gradelib.py
+--- original_branch/gradelib.py	2024-09-11 04:48:31.000000000 +0800
++++ my_lab/gradelib.py	2026-01-08 15:22:24.485959351 +0800
+@@ -238,7 +238,7 @@
+     post_make()
+ 
+ def show_command(cmd):
+-    from pipes import quote
++    from shlex import quote
+     print("\n$", " ".join(map(quote, cmd)))
+ 
+ def maybe_unlink(*paths):
 diff -u -r -N original_branch/Makefile my_lab/Makefile
 --- original_branch/Makefile	2024-09-11 04:48:31.000000000 +0800
-+++ my_lab/Makefile	2025-10-10 19:31:25.984685331 +0800
++++ my_lab/Makefile	2026-01-08 15:22:24.485959351 +0800
 @@ -194,9 +194,11 @@
  	$U/_grind\
  	$U/_wc\
@@ -18,7 +30,7 @@ diff -u -r -N original_branch/Makefile my_lab/Makefile
  UPROGS += \
 diff -u -r -N original_branch/user/find.c my_lab/user/find.c
 --- original_branch/user/find.c	1970-01-01 08:00:00.000000000 +0800
-+++ my_lab/user/find.c	2025-10-10 19:31:25.988685330 +0800
++++ my_lab/user/find.c	2026-01-08 15:22:24.485959351 +0800
 @@ -0,0 +1,95 @@
 +#include "kernel/types.h"
 +
@@ -118,7 +130,7 @@ diff -u -r -N original_branch/user/find.c my_lab/user/find.c
 \ No newline at end of file
 diff -u -r -N original_branch/user/pingpong.c my_lab/user/pingpong.c
 --- original_branch/user/pingpong.c	1970-01-01 08:00:00.000000000 +0800
-+++ my_lab/user/pingpong.c	2025-10-10 19:31:25.988685330 +0800
++++ my_lab/user/pingpong.c	2026-01-08 15:22:24.485959351 +0800
 @@ -0,0 +1,42 @@
 +#include "kernel/types.h"
 +#include "user/user.h"
@@ -165,7 +177,7 @@ diff -u -r -N original_branch/user/pingpong.c my_lab/user/pingpong.c
 \ No newline at end of file
 diff -u -r -N original_branch/user/primes.c my_lab/user/primes.c
 --- original_branch/user/primes.c	1970-01-01 08:00:00.000000000 +0800
-+++ my_lab/user/primes.c	2025-10-10 19:31:25.988685330 +0800
++++ my_lab/user/primes.c	2026-01-08 15:22:24.485959351 +0800
 @@ -0,0 +1,67 @@
 +#include "kernel/types.h"
 +#include "user/user.h"
@@ -237,7 +249,7 @@ diff -u -r -N original_branch/user/primes.c my_lab/user/primes.c
 \ No newline at end of file
 diff -u -r -N original_branch/user/sleep.c my_lab/user/sleep.c
 --- original_branch/user/sleep.c	1970-01-01 08:00:00.000000000 +0800
-+++ my_lab/user/sleep.c	2025-10-10 19:31:25.988685330 +0800
++++ my_lab/user/sleep.c	2026-01-08 15:22:24.485959351 +0800
 @@ -0,0 +1,13 @@
 +#include "kernel/types.h"
 +#include "user/user.h"
@@ -255,7 +267,7 @@ diff -u -r -N original_branch/user/sleep.c my_lab/user/sleep.c
 \ No newline at end of file
 diff -u -r -N original_branch/user/xargs.c my_lab/user/xargs.c
 --- original_branch/user/xargs.c	1970-01-01 08:00:00.000000000 +0800
-+++ my_lab/user/xargs.c	2025-10-10 19:31:25.988685330 +0800
++++ my_lab/user/xargs.c	2026-01-08 15:22:24.485959351 +0800
 @@ -0,0 +1,97 @@
 +#include "kernel/types.h"
 +

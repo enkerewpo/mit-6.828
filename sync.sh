@@ -201,8 +201,11 @@ list_labs() {
     echo ""
     printf "%-8s %-12s %-20s\n" "Lab" "Branch" "Folder"
     echo "----------------------------------------"
-    for lab in "${!LAB_BRANCH_MAP[@]}"; do
-        printf "%-8s %-12s %-20s\n" "$lab" "${LAB_BRANCH_MAP[$lab]}" "${LAB_FOLDER_MAP[$lab]}"
+    for i in {1..9}; do
+        lab="lab$i"
+        if [[ ${LAB_BRANCH_MAP[$lab]+_} ]]; then
+            printf "%-8s %-12s %-20s\n" "$lab" "${LAB_BRANCH_MAP[$lab]}" "${LAB_FOLDER_MAP[$lab]}"
+        fi
     done
 }
 
