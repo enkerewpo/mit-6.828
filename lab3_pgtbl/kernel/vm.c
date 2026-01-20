@@ -162,6 +162,8 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   uint64 a, last;
   pte_t *pte;
 
+  // printf("mappages: va=%lx, size=%lx, pa=%lx, perm=%x\n", va, size, pa, perm);
+
   if((va % PGSIZE) != 0)
     panic("mappages: va not aligned");
 
